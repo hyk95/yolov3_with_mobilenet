@@ -28,8 +28,8 @@ import copy
 
 import tensorflow as tf
 
-from mobilenet import conv_blocks as ops
-from mobilenet import mobilenet as lib
+from basicNet.mobilenet import conv_blocks as ops
+from basicNet.mobilenet import mobilenet as lib
 
 slim = tf.contrib.slim
 op = lib.op
