@@ -15,10 +15,10 @@ def main(argv):
         for line in f.readlines():
             example = line.split(' ')
             image_path = os.path.join(flags.basic_path, example[0])
-            boxes_num = len(example[1:]) // 4
+            boxes_num = len(example[1:]) // 5
             boxes = np.zeros([boxes_num, 5], dtype=np.float32)
             for i in range(boxes_num):
-                boxes[i] = example[1+i*4:5+i*4] + [0]
+                boxes[i] = example[1+i*5:6+i*5]
             dataset[image_path] = boxes
 
     image_paths = list(dataset.keys())

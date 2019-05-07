@@ -13,3 +13,5 @@ ANCHORS          = utils.get_anchors('./data/anchors.txt', IMAGE_H, IMAGE_W)
 NUM_CLASSES      = len(CLASSES)
 EVAL_INTERNAL    = 100
 SAVE_INTERNAL    = 500
+TRAIN_TFRECORD   = "./data/train_data/train.tfrecords"
+TEST_TFRECORD    = "./data/val_data/val.tfrecords"

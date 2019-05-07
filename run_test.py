@@ -4,11 +4,8 @@ from core.dataset import dataset, Parser
 from basicNet.mobilenetV2 import MobilenetV2
 from config.config import *
 
-train_tfrecord   = "./data/train_data/train.tfrecords"
-test_tfrecord    = "./data/val_data/val.tfrecords"
-
 parser   = Parser(IMAGE_H, IMAGE_W, ANCHORS, NUM_CLASSES)
-testset  = dataset(parser, test_tfrecord , BATCH_SIZE, shuffle=None)
+testset  = dataset(parser, TEST_TFRECORD , BATCH_SIZE, shuffle=None)
 
 example = testset.get_next()
 

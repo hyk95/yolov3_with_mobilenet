@@ -7,9 +7,8 @@ from read_tfrecord import load_train_val_data
 
 
 sess = tf.Session()
-train_tfrecord   = "./data/train_data/train.tfrecords"
-test_tfrecord    = "./data/val_data/val.tfrecords"
-trainset, testset = load_train_val_data(train_tfrecord, test_tfrecord)
+
+trainset, testset = load_train_val_data(TRAIN_TFRECORD, TEST_TFRECORD)
 is_training = tf.placeholder(tf.bool)
 example = tf.cond(is_training, lambda: trainset.get_next(), lambda: testset.get_next())
 
