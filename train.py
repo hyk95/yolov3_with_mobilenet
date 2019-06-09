@@ -11,11 +11,11 @@ sess = tf.Session()
 trainset, testset = load_train_val_data(TRAIN_TFRECORD, TEST_TFRECORD)
 is_training = tf.placeholder(tf.bool)
 example = tf.cond(is_training, lambda: trainset.get_next(), lambda: testset.get_next())
-
 images, *y_true = example
 model = yolov3.yolov3(NUM_CLASSES, ANCHORS, basic_net=MobilenetV2)
 
 with tf.variable_scope('yolov3'):
+    model.set_anchor(images)
     pred_feature_map = model.forward(images, is_training=is_training)
     loss             = model.compute_loss(pred_feature_map, y_true)
     y_pred           = model.predict(pred_feature_map)
@@ -41,20 +41,18 @@ with tf.control_dependencies(update_ops):
     train_op = optimizer.minimize(loss[0], var_list=update_vars, global_step=global_step)
 
 sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])
-# saver_to_restore.restore(sess, "./checkpoint/yolov3.ckpt")
+saver_to_restore.restore(sess, "./checkpoint/yolov3.ckpt-12000")
 saver = tf.train.Saver(max_to_keep=2)
 for step in range(STEPS):
-    run_items = sess.run([train_op, write_op, y_pred, y_true] + loss, feed_dict={is_training:True})
-
+    run_items = sess.run([train_op, write_op, y_pred, y_true] + loss + [global_step, learning_rate], feed_dict={is_training:True})
     if (step+1) % EVAL_INTERNAL == 0:
         train_rec_value, train_prec_value = utils.evaluate(run_items[2], run_items[3])
-
     writer_train.add_summary(run_items[1], global_step=step)
     writer_train.flush() # Flushes the event file to disk
     if (step+1) % SAVE_INTERNAL == 0: saver.save(sess, save_path="./checkpoint/yolov3.ckpt", global_step=step+1)
 
-    print("=> STEP %10d [TRAIN]:\tloss_xy:%7.4f \tloss_wh:%7.4f \tloss_conf:%7.4f \tloss_class:%7.4f"
-        %(step+1, run_items[5], run_items[6], run_items[7], run_items[8]))
+    print("=> LR %7.4f \tGLOBAL STEP %10d \tSTEP %10d [TRAIN]:\tloss_xy:%7.4f \tloss_wh:%7.4f \tloss_conf:%7.4f \tloss_class:%7.4f"
+        %(run_items[10], run_items[9], step+1, run_items[5], run_items[6], run_items[7], run_items[8]))
 
     run_items = sess.run([write_op, y_pred, y_true] + loss, feed_dict={is_training:False})
     if (step+1) % EVAL_INTERNAL == 0:

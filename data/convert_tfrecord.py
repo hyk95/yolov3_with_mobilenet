@@ -6,9 +6,9 @@ import os
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_txt", default='./train_gt.txt')
-    parser.add_argument("--tfrecord_path_prefix", default='../train_data/train')
-    parser.add_argument("--basic_path", default='./')
+    parser.add_argument("--dataset_txt", default='./2012_train.txt')
+    parser.add_argument("--tfrecord_path_prefix", default='./train_data/train')
+    parser.add_argument("--basic_path", default='/home/han/vocdata/VOCdevkit/VOC2012/JPEGImages')
     flags = parser.parse_args()
     dataset = {}
     with open(flags.dataset_txt,'r') as f:

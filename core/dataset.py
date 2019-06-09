@@ -1,16 +1,28 @@
 import cv2
 import numpy as np
+import random
 from core import utils
 import tensorflow as tf
 
+RANGE_IMAGE_WH = [[352, 352], [416, 416], [480, 480]]
+
 
 class Parser(object):
-    def __init__(self, image_h, image_w, anchors, num_classes, debug=False):
-        self.anchors     = anchors
+    def __init__(self, anchors, num_classes, debug=False):
+        self.anchors     = np.copy(anchors)
         self.num_classes = num_classes
-        self.image_h     = image_h
-        self.image_w     = image_w
+        # self.image_h     = image_h
+        # self.image_w     = image_w
         self.debug       = debug
+
+    def _init_image_wh(self):
+        self.image_w, self.image_h = random.choice(RANGE_IMAGE_WH)
+
+    def set_anchor_wh(self, image_w, image_h):
+        self.image_w = image_w
+        self.image_h = image_h
+        self.anchors[:, 1] = self.anchors[:, 1] * self.image_w
+        self.anchors[:, 0] = self.anchors[:, 0] * self.image_h
 
     def flip_left_right(self, image, gt_boxes):
 
@@ -78,7 +90,6 @@ class Parser(object):
         # case3 = tf.equal(data_aug_flag, 4), lambda: self.random_crop(image, gt_boxes)
 
         # image, gt_boxes = tf.case([caseO, case1, case2, case3], lambda: (image, gt_boxes))
-
         image, gt_boxes = utils.resize_image_correct_bbox(image, gt_boxes, self.image_h, self.image_w)
 
         if self.debug: return image, gt_boxes
@@ -231,16 +242,15 @@ class Parser(object):
         return y_true_13, y_true_26, y_true_52
 
     def parser_example(self, serialized_example):
-
         features = tf.parse_single_example(
             serialized_example,
             features = {
-                'image' : tf.FixedLenFeature([], dtype = tf.string),
-                'boxes' : tf.FixedLenFeature([], dtype = tf.string),
+                'image' : tf.FixedLenFeature([], dtype=tf.string),
+                'boxes' : tf.FixedLenFeature([], dtype=tf.string),
             }
         )
 
-        image = tf.image.decode_jpeg(features['image'], channels = 3)
+        image = tf.image.decode_jpeg(features['image'], channels=3)
         image = tf.image.convert_image_dtype(image, tf.uint8)
 
         gt_boxes = tf.decode_raw(features['boxes'], tf.float32)
@@ -250,20 +260,23 @@ class Parser(object):
 
 
 class dataset(object):
-    def __init__(self, parser, tfrecords_path, batch_size, shuffle=None, repeat=True):
+    def __init__(self, parser, tfrecords_path, batch_size, shuffle=None, repeat=True, multi_image_size=False):
         self.parser = parser
         self.filenames = tf.gfile.Glob(tfrecords_path)
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.repeat  = repeat
-        self._buildup()
+        if multi_image_size:
+            self._buildmultup()
+        else:
+            self._buildup()
 
     def _buildup(self):
         try:
             self._TFRecordDataset = tf.data.TFRecordDataset(self.filenames)
         except:
             raise NotImplementedError("No tfrecords found!")
-
+        self.parser.set_anchor_wh(416, 416)
         self._TFRecordDataset = self._TFRecordDataset.map(map_func = self.parser.parser_example,
                                                         num_parallel_calls = 10)
         self._TFRecordDataset = self._TFRecordDataset.repeat() if self.repeat else self._TFRecordDataset
@@ -274,42 +287,63 @@ class dataset(object):
         self._TFRecordDataset = self._TFRecordDataset.batch(self.batch_size).prefetch(self.batch_size)
         self._iterator = self._TFRecordDataset.make_one_shot_iterator()
 
+    def _buildmultup(self):
+        try:
+            self._TFRecordDataset = tf.data.TFRecordDataset(self.filenames)
+        except:
+            raise NotImplementedError("No tfrecords found!")
+        self.iterators = [[size[0], self._buildDataSet(size[0], size[1])] for size in RANGE_IMAGE_WH]
+
+    def _buildDataSet(self, image_h, image_w):
+        self.parser.image_w = image_w
+        self.parser.image_h = image_h
+        TFRecordDataset = self._TFRecordDataset.map(map_func=self.parser.parser_example, num_parallel_calls=10)
+        TFRecordDataset = TFRecordDataset.repeat() if self.repeat else TFRecordDataset
+        if self.shuffle is not None:
+            TFRecordDataset = TFRecordDataset.shuffle(self.shuffle)
+        TFRecordDataset = TFRecordDataset.batch(self.batch_size).prefetch(self.batch_size)
+        iterator = TFRecordDataset.make_one_shot_iterator()
+        return iterator
+
     def get_next(self):
+        if hasattr(self, "iterators"):
+            print("train_image_size:{}".format(self.iterators[2][0]))
+            return self.iterators[2][1].get_next()
         return self._iterator.get_next()
 
 
 if __name__ == '__main__':
     from PIL import Image
-    IMAGE_H, IMAGE_W = 416, 416
-    BATCH_SIZE = 1
-    SHUFFLE_SIZE = 1
-
-    train_tfrecord = "../data/train_data/car_train.tfrecords"
-    anchors = utils.get_anchors('../data/car_anchors.txt', IMAGE_H, IMAGE_W)
-    classes = utils.read_coco_names('../data/car.names')
-    num_classes = len(classes)
-
-    parser = Parser(IMAGE_H, IMAGE_W, anchors, num_classes, debug=False)
-    trainset = dataset(parser, train_tfrecord, BATCH_SIZE, shuffle=SHUFFLE_SIZE)
-
-    is_training = tf.placeholder(tf.bool)
-    example = trainset.get_next()
-    sess = tf.Session()
-    for l in range(1):
-        res = sess.run(example)
-        image = res[0][0] * 255
-        y_true = res[1:]
-        boxes = utils.decode_gtbox(y_true)
-        n_box = len(boxes)
-        print(n_box)
-        for i in range(n_box):
-            image = cv2.rectangle(image, (int(float(boxes[i][0])),
-                                          int(float(boxes[i][1]))),
-                                  (int(float(boxes[i][2])),
-                                   int(float(boxes[i][3]))), (255, 0, 0), 1)
-            # label = classes[boxes[i][4]]
-            image = cv2.putText(image, "1", (int(float(boxes[i][0])), int(float(boxes[i][1]))),
-                                cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 1, 2)
-
-        image = Image.fromarray(np.uint8(image))
-        image.show()
+    # IMAGE_H, IMAGE_W = 416, 416
+    # BATCH_SIZE = 1
+    # SHUFFLE_SIZE = 1
+    #
+    # train_tfrecord = "../data/train_data/car_train.tfrecords"
+    # anchors = utils.get_anchors('../data/car_anchors.txt', IMAGE_H, IMAGE_W)
+    # classes = utils.read_coco_names('../data/car.names')
+    # num_classes = len(classes)
+    #
+    # parser = Parser(IMAGE_H, IMAGE_W, anchors, num_classes, debug=False)
+    # trainset = dataset(parser, train_tfrecord, BATCH_SIZE, shuffle=SHUFFLE_SIZE)
+    #
+    # is_training = tf.placeholder(tf.bool)
+    # example = trainset.get_next()
+    # sess = tf.Session()
+    # for l in range(1):
+    #     res = sess.run(example)
+    #     image = res[0][0] * 255
+    #     y_true = res[1:]
+    #     boxes = utils.decode_gtbox(y_true)
+    #     n_box = len(boxes)
+    #     print(n_box)
+    #     for i in range(n_box):
+    #         image = cv2.rectangle(image, (int(float(boxes[i][0])),
+    #                                       int(float(boxes[i][1]))),
+    #                               (int(float(boxes[i][2])),
+    #                                int(float(boxes[i][3]))), (255, 0, 0), 1)
+    #         # label = classes[boxes[i][4]]
+    #         image = cv2.putText(image, "1", (int(float(boxes[i][0])), int(float(boxes[i][1]))),
+    #                             cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 1, 2)
+    #
+    #     image = Image.fromarray(np.uint8(image))
+    #     image.show()

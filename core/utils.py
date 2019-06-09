@@ -282,15 +282,15 @@ def load_weights(var_list, weights_file):
     return assign_ops
 
 
-def get_anchors(anchors_path, image_h, image_w):
+def get_anchors(anchors_path):
     '''loads the anchors from a file'''
     with open(anchors_path) as f:
         anchors = f.readline()
     anchors = np.array(anchors.split(), dtype=np.float32)
     anchors = anchors.reshape(-1,2)
-    anchors[:, 1] = anchors[:, 1] * image_h
-    anchors[:, 0] = anchors[:, 0] * image_w
-    return anchors.astype(np.int32)
+    anchors[:, 1] = anchors[:, 1]
+    anchors[:, 0] = anchors[:, 0]
+    return anchors
 
 
 def bbox_iou(A, B):

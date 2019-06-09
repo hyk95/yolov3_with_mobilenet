@@ -17,14 +17,13 @@ slim = tf.contrib.slim
 
 
 class yolov3(object):
-
     def __init__(self, num_classes, anchors,
                  batch_norm_decay=0.9, leaky_relu=0.1, basic_net="darknet"):
 
         # self._ANCHORS = [[10 ,13], [16 , 30], [33 , 23],
                          # [30 ,61], [62 , 45], [59 ,119],
                          # [116,90], [156,198], [373,326]]
-        self._ANCHORS = anchors
+        self._ANCHORS = tf.convert_to_tensor(anchors)
         self._BATCH_NORM_DECAY = batch_norm_decay
         self._LEAKY_RELU = leaky_relu
         self._NUM_CLASSES = num_classes
@@ -41,8 +40,7 @@ class yolov3(object):
         inputs = common._conv2d_fixed_padding(inputs, filters * 2, 3)
         return route, inputs
 
-    def _detection_layer(self, inputs, anchors):
-        num_anchors = len(anchors)
+    def _detection_layer(self, inputs, num_anchors):
         feature_map = slim.conv2d(inputs, num_anchors * (5 + self._NUM_CLASSES), 1,
                                 stride=1, normalizer_fn=None,
                                 activation_fn=None,
@@ -51,11 +49,12 @@ class yolov3(object):
 
     def _reorg_layer(self, feature_map, anchors):
 
-        num_anchors = len(anchors) # num_anchors=3
-        grid_size = feature_map.shape.as_list()[1:3]
+        num_anchors = 3 # num_anchors=3
+        grid_size = tf.shape(feature_map)[1:3]
+        # grid_size = feature_map.shape.as_list()[1:3]
         # the downscale image in height and weight
         stride = tf.cast(self.img_size // grid_size, tf.float32) # [h,w] -> [y,x]
-        feature_map = tf.reshape(feature_map, [-1, grid_size[0], grid_size[1], num_anchors, 5 + self._NUM_CLASSES])
+        feature_map = tf.reshape(feature_map, tf.convert_to_tensor([-1, grid_size[0], grid_size[1], num_anchors, 5 + self._NUM_CLASSES]))
 
         box_centers, box_sizes, conf_logits, prob_logits = tf.split(
             feature_map, [2, 2, 1, self._NUM_CLASSES], axis=-1)
@@ -69,7 +68,7 @@ class yolov3(object):
         x_offset   = tf.reshape(a, (-1, 1))
         y_offset   = tf.reshape(b, (-1, 1))
         x_y_offset = tf.concat([x_offset, y_offset], axis=-1)
-        x_y_offset = tf.reshape(x_y_offset, [grid_size[0], grid_size[1], 1, 2])
+        x_y_offset = tf.reshape(x_y_offset, tf.convert_to_tensor([grid_size[0], grid_size[1], 1, 2]))
         x_y_offset = tf.cast(x_y_offset, tf.float32)
 
         box_centers = box_centers + x_y_offset
@@ -81,12 +80,15 @@ class yolov3(object):
 
     @staticmethod
     def _upsample(inputs, out_shape):
-
-        new_height, new_width = out_shape[1], out_shape[2]
-        inputs = tf.image.resize_nearest_neighbor(inputs, (new_height, new_width))
+        new_hw = out_shape[1:3]
+        inputs = tf.image.resize_nearest_neighbor(inputs, new_hw)
         inputs = tf.identity(inputs, name='upsampled')
 
         return inputs
+
+    def set_anchor(self, inputs):
+        img_size = tf.shape(inputs)[1:3]
+        self._ANCHORS = tf.multiply(self._ANCHORS, tf.cast(img_size, dtype=tf.float32))
 
     def forward(self, inputs, is_training, reuse=False):
         """
@@ -123,35 +125,34 @@ class yolov3(object):
                     route_1, route_2, inputs = self.basic_net(inputs).outputs
                 with tf.variable_scope('yolo-v3'):
                     route, inputs = self._yolo_block(inputs, 512)
-                    feature_map_1 = self._detection_layer(inputs, self._ANCHORS[6:9])
+                    feature_map_1 = self._detection_layer(inputs, 3)
                     feature_map_1 = tf.identity(feature_map_1, name='feature_map_1')
 
                     inputs = common._conv2d_fixed_padding(route, 256, 1)
-                    upsample_size = route_2.get_shape().as_list()
+                    upsample_size = tf.shape(route_2)
                     inputs = self._upsample(inputs, upsample_size)
                     inputs = tf.concat([inputs, route_2], axis=3)
 
                     route, inputs = self._yolo_block(inputs, 256)
-                    feature_map_2 = self._detection_layer(inputs, self._ANCHORS[3:6])
+                    feature_map_2 = self._detection_layer(inputs, 3)
                     feature_map_2 = tf.identity(feature_map_2, name='feature_map_2')
 
                     inputs = common._conv2d_fixed_padding(route, 128, 1)
-                    upsample_size = route_1.get_shape().as_list()
+                    upsample_size = tf.shape(route_1)
                     inputs = self._upsample(inputs, upsample_size)
                     inputs = tf.concat([inputs, route_1], axis=3)
 
                     route, inputs = self._yolo_block(inputs, 128)
-                    feature_map_3 = self._detection_layer(inputs, self._ANCHORS[0:3])
+                    feature_map_3 = self._detection_layer(inputs, 3)
                     feature_map_3 = tf.identity(feature_map_3, name='feature_map_3')
 
             return feature_map_1, feature_map_2, feature_map_3
 
     def _reshape(self, x_y_offset, boxes, confs, probs):
-
-        grid_size = x_y_offset.shape.as_list()[:2]
-        boxes = tf.reshape(boxes, [-1, grid_size[0]*grid_size[1]*3, 4])
-        confs = tf.reshape(confs, [-1, grid_size[0]*grid_size[1]*3, 1])
-        probs = tf.reshape(probs, [-1, grid_size[0]*grid_size[1]*3, self._NUM_CLASSES])
+        grid_size = tf.shape(x_y_offset)[:2]
+        boxes = tf.reshape(boxes, tf.convert_to_tensor([-1, grid_size[0]*grid_size[1]*3, 4]))
+        confs = tf.reshape(confs, tf.convert_to_tensor([-1, grid_size[0]*grid_size[1]*3, 1]))
+        probs = tf.reshape(probs, tf.convert_to_tensor([-1, grid_size[0]*grid_size[1]*3, self._NUM_CLASSES]))
 
         return boxes, confs, probs
 
@@ -218,9 +219,8 @@ class yolov3(object):
     def loss_layer(self, feature_map_i, y_true, anchors):
         # size in [h, w] format! don't get messed up!
         grid_size = tf.shape(feature_map_i)[1:3]
-        grid_size_ = feature_map_i.shape.as_list()[1:3]
-
-        y_true = tf.reshape(y_true, [-1, grid_size_[0], grid_size_[1], 3, 5+self._NUM_CLASSES])
+        # grid_size_ = feature_map_i.shape.as_list()[1:3]
+        y_true = tf.reshape(y_true, tf.convert_to_tensor([-1, grid_size[0], grid_size[1], 3, 5+self._NUM_CLASSES]))
 
         # the downscale ratio in height and weight
         ratio = tf.cast(self.img_size / grid_size, tf.float32)

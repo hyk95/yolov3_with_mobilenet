@@ -73,9 +73,9 @@ def parse_anno(annotation_path, basic_path=None):
         image = cv2.imread(os.path.join(basic_path, s[0]))
         image_h, image_w = image.shape[:2]
         s = s[1:]
-        box_cnt = len(s) // 4
+        box_cnt = len(s) // 5
         for i in range(box_cnt):
-            x_min, y_min, x_max, y_max = float(s[i*4+0]), float(s[i*4+1]), float(s[i*4+2]), float(s[i*4+3])
+            x_min, y_min, x_max, y_max = float(s[i*5+0]), float(s[i*5+1]), float(s[i*5+2]), float(s[i*5+3])
             width  = (x_max - x_min) / image_w
             height = (y_max - y_min) / image_h
             result.append([width, height])
@@ -106,9 +106,9 @@ def plot_cluster_result(clusters,nearest_clusters,WithinClusterSumDist,wh,k):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_txt", type=str, default="./train_gt.txt")
+    parser.add_argument("--dataset_txt", type=str, default="./2012_train.txt")
     parser.add_argument("--anchors_txt", type=str, default="./anchors.txt")
-    parser.add_argument("--basic_path",  type=str, default='./')
+    parser.add_argument("--basic_path",  type=str, default='/home/han/vocdata/VOCdevkit/VOC2012/JPEGImages')
     parser.add_argument("--cluster_num", type=int, default=9)
     args = parser.parse_args()
     anno_result = parse_anno(args.dataset_txt, args.basic_path)
