@@ -4,8 +4,9 @@ from core.dataset import dataset, Parser
 from basicNet.mobilenetV2 import MobilenetV2
 from config.config import *
 parser   = Parser(ANCHORS, NUM_CLASSES)
+trainset = dataset(parser, TEST_TFRECORD, BATCH_SIZE, shuffle=SHUFFLE_SIZE, multi_image_size=False)
 testset  = dataset(parser, TEST_TFRECORD, BATCH_SIZE, shuffle=None)
-example = testset.get_next()
+example = trainset.get_next()
 
 images, *y_true = example
 model = yolov3.yolov3(NUM_CLASSES, ANCHORS, basic_net=MobilenetV2)
@@ -16,7 +17,7 @@ with tf.variable_scope('yolov3'):
     y_pred           = model.predict(pred_feature_map)
 saver = tf.train.Saver()
 with tf.Session() as sess:
-    saver.restore(sess, "./checkpoint/yolov3.ckpt-12000")
+    saver.restore(sess, "./checkpoint/yolov3.ckpt-25000")
     run_items = sess.run([images, y_pred])
     for i in range(8):
         image = run_items[0][i]

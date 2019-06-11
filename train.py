@@ -9,6 +9,8 @@ from read_tfrecord import load_train_val_data
 sess = tf.Session()
 
 trainset, testset = load_train_val_data(TRAIN_TFRECORD, TEST_TFRECORD)
+print("trainset image size: {}, {}".format(trainset.parser.image_h, trainset.parser.image_h))
+print("testset image size: {}, {}".format(testset.parser.image_h, testset.parser.image_h))
 is_training = tf.placeholder(tf.bool)
 example = tf.cond(is_training, lambda: trainset.get_next(), lambda: testset.get_next())
 images, *y_true = example
@@ -25,7 +27,7 @@ tf.summary.scalar("loss/sizes_loss",   loss[2])
 tf.summary.scalar("loss/confs_loss",   loss[3])
 tf.summary.scalar("loss/class_loss",   loss[4])
 
-global_step = tf.Variable(0, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES])
+global_step = tf.Variable(0, trainable=False)
 write_op = tf.summary.merge_all()
 writer_train = tf.summary.FileWriter("./data/train", tf.get_default_graph())
 writer_test  = tf.summary.FileWriter("./data/test")
@@ -41,7 +43,7 @@ with tf.control_dependencies(update_ops):
     train_op = optimizer.minimize(loss[0], var_list=update_vars, global_step=global_step)
 
 sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])
-saver_to_restore.restore(sess, "./checkpoint/yolov3.ckpt-12000")
+# saver_to_restore.restore(sess, "./checkpoint/yolov3.ckpt-12000")
 saver = tf.train.Saver(max_to_keep=2)
 for step in range(STEPS):
     run_items = sess.run([train_op, write_op, y_pred, y_true] + loss + [global_step, learning_rate], feed_dict={is_training:True})
